@@ -12,6 +12,7 @@ def test_prompt_includes_all_configured_categories():
     prompt = build_prompt(config["classification"]["categories"], config["classification"]["fallback_category"])
 
     assert "Return only strict JSON" in prompt
+    assert "preferred_category" in prompt
     for category in config["classification"]["categories"]:
         assert category in prompt
 
@@ -20,7 +21,7 @@ def test_parse_valid_json_response():
     config = load_config()
 
     result = parse_classification_response(
-        '{"category":"Birds","confidence":0.82,"description":"bird on branch"}',
+        '{"category":"Birds","preferred_category":"Songbird","confidence":0.82,"description":"bird on branch"}',
         config,
         "qwen3.6",
     )
@@ -28,6 +29,8 @@ def test_parse_valid_json_response():
     assert result.category == "Birds"
     assert result.confidence == 0.82
     assert result.description == "bird on branch"
+    assert result.preferred_category == "Songbird"
+    assert result.raw_response == '{"category":"Birds","preferred_category":"Songbird","confidence":0.82,"description":"bird on branch"}'
     assert result.warnings == []
 
 

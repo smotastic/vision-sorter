@@ -19,6 +19,8 @@ class ClassificationResult:
     description: str
     model: str
     warnings: list[str]
+    preferred_category: str = ""
+    raw_response: str = ""
 
 
 def build_prompt(categories: list[str], fallback_category: str) -> str:
@@ -28,8 +30,9 @@ def build_prompt(categories: list[str], fallback_category: str) -> str:
         "Choose exactly one category from this allowed list:\n"
         f"{category_lines}\n\n"
         f"If the image is ambiguous or does not fit, choose {fallback_category}.\n"
+        "Also include preferred_category: the category name you would have chosen if you were not restricted to the allowed list.\n"
         "Return only strict JSON with this schema:\n"
-        '{"category":"<one allowed category>","confidence":0.0,"description":"short visual description"}\n'
+        '{"category":"<one allowed category>","preferred_category":"<free-form best category>","confidence":0.0,"description":"short visual description"}\n'
         "Confidence must be a number from 0 to 1. Do not include markdown or extra text."
     )
 
@@ -63,9 +66,10 @@ def parse_classification_response(response_text: str, config: dict, model: str, 
         parsed = _extract_json_object(response_text)
     except Exception as exc:
         warnings.append(f"Invalid model JSON response: {exc}")
-        return ClassificationResult(fallback, None, "", model, warnings)
+        return ClassificationResult(fallback, None, "", model, warnings, raw_response=response_text)
 
     category = parsed.get("category")
+    preferred_category = parsed.get("preferred_category") or ""
     description = parsed.get("description") or ""
     confidence_value = parsed.get("confidence")
     try:
@@ -81,7 +85,7 @@ def parse_classification_response(response_text: str, config: dict, model: str, 
         warnings.append(f"Model confidence below threshold: {confidence!r}")
         category = fallback
 
-    return ClassificationResult(str(category), confidence, str(description), model, warnings)
+    return ClassificationResult(str(category), confidence, str(description), model, warnings, str(preferred_category), response_text)
 
 
 def _extract_ollama_response_text(body: Any, warnings: list[str]) -> str:

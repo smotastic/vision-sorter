@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import json
+import shutil
 from pathlib import Path
 
 from .config import load_config
+
+
+def write_audit_entry(path: Path, entry: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,16 +64,53 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Found {len(images)} supported image files.")
 
     date_format = config["dates"]["folder_date_format"]
+    completed = 0
+    failed = 0
     for index, image in enumerate(images, start=1):
         image_date, date_source, warnings = get_image_date(image, config)
         classification = classify_image(image, config, model_override=args.model)
         warnings.extend(classification.warnings)
         dest = build_destination_path(destination, image_date.strftime(date_format), classification.category, image)
         print(f"[{index}/{len(images)}] {image.name} -> {dest.relative_to(destination)} ({classification.category}, {date_source})")
+        if classification.preferred_category:
+            print(f"  preferred category: {classification.preferred_category}")
         for warning in warnings:
             print(f"  warning: {warning}")
 
+        operation_error = ""
+        if not args.dry_run:
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if action == "move":
+                    shutil.move(str(image), str(dest))
+                else:
+                    shutil.copy2(image, dest)
+                completed += 1
+            except Exception as exc:
+                failed += 1
+                operation_error = str(exc)
+                print(f"  error: Could not {action} file: {exc}")
+
+        if config["audit"]["enabled"]:
+            write_audit_entry(Path(config["audit"]["path"]), {
+                "source": str(image),
+                "destination": str(dest),
+                "action": action,
+                "dry_run": args.dry_run,
+                "date": image_date.isoformat(),
+                "date_source": date_source,
+                "category": classification.category,
+                "preferred_category": classification.preferred_category,
+                "confidence": classification.confidence,
+                "description": classification.description,
+                "model": classification.model,
+                "warnings": warnings,
+                "ollama_response": classification.raw_response,
+                "operation_status": "dry-run" if args.dry_run else ("failed" if operation_error else "completed"),
+                "operation_error": operation_error,
+            })
+
     action_past = "moved" if action == "move" else "copied"
     print()
-    print(f"Done. Processed: {len(images)}, {action_past}: 0, failed: 0")
+    print(f"Done. Processed: {len(images)}, {action_past}: {completed}, failed: {failed}")
     return 0
