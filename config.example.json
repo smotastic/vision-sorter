@@ -1,0 +1,56 @@
+{
+  "ollama": {
+    "host": "http://localhost:11434",
+    "model": "qwen3.6",
+    "timeout_seconds": 600
+  },
+  "classification": {
+    "fallback_category": "Unclear-Needs-Review",
+    "min_confidence": 0.55,
+    "categories": [
+      "Birds",
+      "Mammals",
+      "Insects",
+      "Butterflies-Moths",
+      "Reptiles-Amphibians",
+      "Fish-Aquatic-Life",
+      "Pets-Domestic-Animals",
+      "Animal-Tracks-Signs",
+      "Flowers",
+      "Trees-Forests",
+      "Leaves-Foliage",
+      "Mushrooms-Fungi",
+      "Moss-Lichen",
+      "Plants-Other",
+      "Mountains-Rocks",
+      "Water-Rivers-Lakes",
+      "Seascapes-Coast",
+      "Fields-Meadows",
+      "Sky-Clouds-Weather",
+      "Sunrise-Sunset",
+      "Snow-Ice",
+      "Macro-Nature-Details",
+      "People-Outdoors",
+      "Buildings-Structures",
+      "Trails-Paths",
+      "Vehicles-Equipment",
+      "Other-Nature",
+      "Unclear-Needs-Review"
+    ]
+  },
+  "files": {
+    "recursive": true,
+    "default_action": "copy",
+    "supported_extensions": [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".gif", ".nef"],
+    "duplicate_strategy": "append-counter"
+  },
+  "dates": {
+    "prefer_exif": true,
+    "fallback_to_mtime": true,
+    "folder_date_format": "%Y_%m_%d"
+  },
+  "audit": {
+    "enabled": true,
+    "path": "vision-sort-audit.jsonl"
+  }
+}

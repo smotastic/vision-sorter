@@ -1,0 +1,6 @@
+Pillow
+pillow-heif
+requests
+pytest
+exifread
+rawpy
