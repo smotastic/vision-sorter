@@ -42,13 +42,27 @@
       "Trails-Paths",
       "Vehicles-Equipment",
       "Other-Nature",
+      "Squirrels",
+      "Swans",
       "Unclear-Needs-Review"
     ]
   },
   "files": {
     "recursive": true,
     "default_action": "copy",
-    "supported_extensions": [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp", ".gif", ".nef"],
+    "supported_extensions": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".heic",
+      ".heif",
+      ".tif",
+      ".tiff",
+      ".bmp",
+      ".gif",
+      ".nef"
+    ],
     "duplicate_strategy": "append-counter"
   },
   "dates": {

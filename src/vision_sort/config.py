@@ -33,6 +33,8 @@ DEFAULT_CATEGORIES = [
     "Trails-Paths",
     "Vehicles-Equipment",
     "Other-Nature",
+    "Squirrels",
+    "Swans",
     "Unclear-Needs-Review",
 ]
 
