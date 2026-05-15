@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vision_sort.classifier import build_prompt, classify_image, parse_classification_response
+from vision_sort.classifier import build_prompt, classify_image, parse_classification_response, _extract_ollama_response_text
 from vision_sort.config import load_config
 
 
@@ -87,7 +87,13 @@ def test_classify_image_calls_ollama(monkeypatch, tmp_path):
 
     normalized = tmp_path / "normalized.jpg"
     normalized.write_bytes(b"normalized")
-    monkeypatch.setattr("vision_sort.classifier.normalize_image_for_ollama", lambda p: (normalized, ["converted"]))
+    normalize_calls = []
+
+    def fake_normalize(p, max_size, jpeg_quality):
+        normalize_calls.append((p, max_size, jpeg_quality))
+        return normalized, ["converted"]
+
+    monkeypatch.setattr("vision_sort.classifier.normalize_image_for_ollama", fake_normalize)
 
     class FakeResponse:
         def raise_for_status(self):
@@ -111,8 +117,33 @@ def test_classify_image_calls_ollama(monkeypatch, tmp_path):
     assert result.warnings == ["converted"]
     assert calls[0][0] == "http://localhost:11434/api/generate"
     assert calls[0][1]["images"] == ["bm9ybWFsaXplZA=="]
+    assert calls[0][1]["keep_alive"] == "30m"
+    assert calls[0][1]["options"] == {"temperature": 0, "num_predict": 80}
+    assert normalize_calls == [(path, 768, 70)]
     assert calls[0][2] == 600
     assert not normalized.exists()
+
+
+def test_extract_ollama_response_text_supports_chat_shape():
+    warnings = []
+
+    response_text = _extract_ollama_response_text(
+        {"message": {"content": '{"category":"Birds","confidence":0.8,"description":"bird"}'}},
+        warnings,
+    )
+
+    assert response_text == '{"category":"Birds","confidence":0.8,"description":"bird"}'
+    assert warnings == []
+
+
+def test_extract_ollama_response_text_warns_with_body_preview():
+    warnings = []
+
+    response_text = _extract_ollama_response_text({"done": True, "error": "bad model"}, warnings)
+
+    assert response_text == ""
+    assert any("bad model" in warning for warning in warnings)
+    assert any("keys: done, error" in warning for warning in warnings)
 
 
 def test_classify_image_returns_fallback_on_ollama_failure(monkeypatch, tmp_path):
@@ -121,7 +152,7 @@ def test_classify_image_returns_fallback_on_ollama_failure(monkeypatch, tmp_path
     path.write_bytes(b"fake")
     normalized = tmp_path / "normalized.jpg"
     normalized.write_bytes(b"normalized")
-    monkeypatch.setattr("vision_sort.classifier.normalize_image_for_ollama", lambda p: (normalized, []))
+    monkeypatch.setattr("vision_sort.classifier.normalize_image_for_ollama", lambda p, max_size, jpeg_quality: (normalized, []))
 
     def fake_post(url, json, timeout):
         raise RuntimeError("offline")

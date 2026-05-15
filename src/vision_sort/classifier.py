@@ -84,6 +84,44 @@ def parse_classification_response(response_text: str, config: dict, model: str, 
     return ClassificationResult(str(category), confidence, str(description), model, warnings)
 
 
+def _extract_ollama_response_text(body: Any, warnings: list[str]) -> str:
+    """Return generated text from common Ollama-compatible response shapes."""
+    if not isinstance(body, dict):
+        warnings.append(f"Ollama returned unexpected JSON type: {type(body).__name__}")
+        return ""
+
+    if body.get("error"):
+        warnings.append(f"Ollama returned error: {body['error']}")
+
+    response_text = body.get("response")
+    if isinstance(response_text, str) and response_text.strip():
+        return response_text
+
+    message = body.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content
+
+    choices = body.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            message = first.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str) and content.strip():
+                    return content
+            text = first.get("text")
+            if isinstance(text, str) and text.strip():
+                return text
+
+    keys = ", ".join(sorted(str(key) for key in body.keys())) or "none"
+    preview = json.dumps(body, default=str)[:500]
+    warnings.append(f"Ollama response did not include generated text; keys: {keys}; body preview: {preview}")
+    return ""
+
+
 def classify_image(path: Path, config: dict, model_override: str | None = None) -> ClassificationResult:
     ollama = config["ollama"]
     classification = config["classification"]
@@ -92,7 +130,11 @@ def classify_image(path: Path, config: dict, model_override: str | None = None) 
 
     normalized_image_path: Path | None = None
     try:
-        normalized_image_path, image_warnings = normalize_image_for_ollama(path)
+        normalized_image_path, image_warnings = normalize_image_for_ollama(
+            path,
+            max_size=ollama["image_max_size"],
+            jpeg_quality=ollama["jpeg_quality"],
+        )
         warnings.extend(image_warnings)
         image_payload = base64.b64encode(normalized_image_path.read_bytes()).decode("ascii")
         prompt = build_prompt(classification["categories"], classification["fallback_category"])
@@ -103,7 +145,10 @@ def classify_image(path: Path, config: dict, model_override: str | None = None) 
             "images": [image_payload],
             "stream": False,
             "format": "json",
+            "options": ollama["options"],
         }
+        if ollama.get("keep_alive"):
+            payload["keep_alive"] = ollama["keep_alive"]
 
         response = requests.post(url, json=payload, timeout=ollama["timeout_seconds"])
         response.raise_for_status()
@@ -118,8 +163,7 @@ def classify_image(path: Path, config: dict, model_override: str | None = None) 
             except OSError as exc:
                 warnings.append(f"Could not remove temporary Ollama image {normalized_image_path}: {exc}")
 
-    response_text = body.get("response", "") if isinstance(body, dict) else ""
+    response_text = _extract_ollama_response_text(body, warnings)
     if not response_text:
-        warnings.append("Ollama response did not include a response field")
         return ClassificationResult(classification["fallback_category"], None, "", model, warnings)
     return parse_classification_response(response_text, config, model, warnings)

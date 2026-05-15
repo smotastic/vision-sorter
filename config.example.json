@@ -1,8 +1,15 @@
 {
   "ollama": {
     "host": "http://localhost:11434",
-    "model": "qwen3.6",
-    "timeout_seconds": 600
+    "model": "llama3.2-vision",
+    "timeout_seconds": 600,
+    "keep_alive": "30m",
+    "options": {
+      "temperature": 0,
+      "num_predict": 80
+    },
+    "image_max_size": 768,
+    "jpeg_quality": 70
   },
   "classification": {
     "fallback_category": "Unclear-Needs-Review",

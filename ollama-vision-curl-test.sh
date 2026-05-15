@@ -3,12 +3,12 @@ set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 IMAGE_PATH [MODEL]" >&2
-  echo "Example: $0 ./incoming/example.jpg qwen3.6" >&2
+  echo "Example: $0 ./incoming/example.jpg llama3.2-vision" >&2
   exit 2
 fi
 
 IMAGE_PATH="$1"
-MODEL="${2:-qwen3.6}"
+MODEL="${2:-llama3.2-vision}"
 OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
 MAX_SIZE="${MAX_SIZE:-1600}"
 JPEG_QUALITY="${JPEG_QUALITY:-85}"

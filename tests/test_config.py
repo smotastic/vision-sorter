@@ -12,7 +12,7 @@ def test_load_config_uses_defaults_when_no_config_file(tmp_path, monkeypatch):
 
     config = load_config()
 
-    assert config["ollama"]["model"] == "qwen3.6"
+    assert config["ollama"]["model"] == "llama3.2-vision"
     assert "Birds" in config["classification"]["categories"]
     assert ".heif" in config["files"]["supported_extensions"]
     assert ".nef" in config["files"]["supported_extensions"]

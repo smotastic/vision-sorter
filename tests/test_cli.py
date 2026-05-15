@@ -42,7 +42,7 @@ def test_main_prints_copy_summary_by_default(tmp_path, monkeypatch, capsys):
     assert f"Source:      {source}" in output
     assert f"Destination: {destination}" in output
     assert "Action:      copy" in output
-    assert "Model:       qwen3.6" in output
+    assert "Model:       llama3.2-vision" in output
     assert "Dry run:     yes" in output
 
 

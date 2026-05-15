@@ -61,9 +61,13 @@ def _load_for_ollama(path: Path) -> tuple[Image.Image, list[str]]:
     return image, warnings
 
 
-def _prepare_ollama_jpeg(path: Path) -> tuple[Image.Image, list[str]]:
+DEFAULT_OLLAMA_IMAGE_MAX_SIZE = 768
+DEFAULT_OLLAMA_JPEG_QUALITY = 70
+
+
+def _prepare_ollama_jpeg(path: Path, max_size: int = DEFAULT_OLLAMA_IMAGE_MAX_SIZE) -> tuple[Image.Image, list[str]]:
     image, warnings = _load_for_ollama(path)
-    image.thumbnail((1600, 1600))
+    image.thumbnail((max_size, max_size))
     if image.mode in {"RGBA", "LA", "P"}:
         image = image.convert("RGBA")
         background = Image.new("RGBA", image.size, (255, 255, 255, 255))
@@ -75,26 +79,34 @@ def _prepare_ollama_jpeg(path: Path) -> tuple[Image.Image, list[str]]:
     return image, warnings
 
 
-def normalize_image_for_ollama(path: Path) -> tuple[Path, list[str]]:
+def normalize_image_for_ollama(
+    path: Path,
+    max_size: int = DEFAULT_OLLAMA_IMAGE_MAX_SIZE,
+    jpeg_quality: int = DEFAULT_OLLAMA_JPEG_QUALITY,
+) -> tuple[Path, list[str]]:
     """Write a smaller normalized JPEG to disk and return its absolute path."""
-    image, warnings = _prepare_ollama_jpeg(path)
+    image, warnings = _prepare_ollama_jpeg(path, max_size=max_size)
     try:
         handle = tempfile.NamedTemporaryFile(prefix="vision-sort-ollama-", suffix=".jpg", delete=False)
         handle.close()
         output_path = Path(handle.name).resolve()
-        image.save(output_path, format="JPEG", quality=85, optimize=True)
+        image.save(output_path, format="JPEG", quality=jpeg_quality, optimize=True)
         warnings.append(f"Normalized image for Ollama: {output_path}")
         return output_path, warnings
     finally:
         image.close()
 
 
-def image_to_ollama_base64(path: Path) -> tuple[str, list[str]]:
+def image_to_ollama_base64(
+    path: Path,
+    max_size: int = DEFAULT_OLLAMA_IMAGE_MAX_SIZE,
+    jpeg_quality: int = DEFAULT_OLLAMA_JPEG_QUALITY,
+) -> tuple[str, list[str]]:
     """Convert an image to a base64 JPEG payload for Ollama."""
-    image, warnings = _prepare_ollama_jpeg(path)
+    image, warnings = _prepare_ollama_jpeg(path, max_size=max_size)
     try:
         buffer = BytesIO()
-        image.save(buffer, format="JPEG", quality=85, optimize=True)
+        image.save(buffer, format="JPEG", quality=jpeg_quality, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode("ascii"), warnings
     finally:
         image.close()

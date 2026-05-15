@@ -53,8 +53,15 @@ DEFAULT_SUPPORTED_EXTENSIONS = [
 DEFAULT_CONFIG: dict[str, Any] = {
     "ollama": {
         "host": "http://localhost:11434",
-        "model": "qwen3.6",
+        "model": "llama3.2-vision",
         "timeout_seconds": 600,
+        "keep_alive": "30m",
+        "options": {
+            "temperature": 0,
+            "num_predict": 80,
+        },
+        "image_max_size": 768,
+        "jpeg_quality": 70,
     },
     "classification": {
         "fallback_category": "Unclear-Needs-Review",
@@ -116,6 +123,18 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("ollama.model must be a non-empty string")
     if not isinstance(ollama.get("timeout_seconds"), (int, float)) or ollama["timeout_seconds"] <= 0:
         raise ValueError("ollama.timeout_seconds must be a positive number")
+    if "keep_alive" in ollama and ollama["keep_alive"] is not None and not isinstance(ollama["keep_alive"], str):
+        raise ValueError("ollama.keep_alive must be a string when provided")
+    if not isinstance(ollama.get("options"), dict):
+        raise ValueError("ollama.options must be an object")
+    if "num_predict" in ollama["options"] and not isinstance(ollama["options"]["num_predict"], int):
+        raise ValueError("ollama.options.num_predict must be an integer")
+    if "temperature" in ollama["options"] and not isinstance(ollama["options"]["temperature"], (int, float)):
+        raise ValueError("ollama.options.temperature must be a number")
+    if not isinstance(ollama.get("image_max_size"), int) or ollama["image_max_size"] <= 0:
+        raise ValueError("ollama.image_max_size must be a positive integer")
+    if not isinstance(ollama.get("jpeg_quality"), int) or not 1 <= ollama["jpeg_quality"] <= 95:
+        raise ValueError("ollama.jpeg_quality must be an integer between 1 and 95")
 
     classification = config["classification"]
     categories = classification.get("categories")

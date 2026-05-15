@@ -36,3 +36,16 @@ def test_normalize_image_for_ollama_writes_smaller_jpeg_file(tmp_path):
         assert any("Normalized image for Ollama" in warning for warning in warnings)
     finally:
         output_path.unlink(missing_ok=True)
+
+
+def test_normalize_image_for_ollama_downscales_to_configured_max_size(tmp_path):
+    path = tmp_path / "large.jpg"
+    Image.new("RGB", (2000, 1000), "green").save(path)
+
+    output_path, _warnings = normalize_image_for_ollama(path, max_size=768, jpeg_quality=70)
+
+    try:
+        converted = Image.open(output_path)
+        assert converted.size == (768, 384)
+    finally:
+        output_path.unlink(missing_ok=True)
