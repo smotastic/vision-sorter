@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from .config import load_config
@@ -12,6 +13,53 @@ def write_audit_entry(path: Path, entry: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+ANSI_RESET = "\033[0m"
+ANSI_BOLD = "\033[1m"
+ANSI_DIM = "\033[2m"
+ANSI_CYAN = "\033[36m"
+ANSI_GREEN = "\033[32m"
+ANSI_YELLOW = "\033[33m"
+ANSI_MAGENTA = "\033[35m"
+ANSI_BLUE = "\033[34m"
+ANSI_RED = "\033[31m"
+
+
+def _color(text: str, code: str, *, enabled: bool) -> str:
+    return f"{code}{text}{ANSI_RESET}" if enabled else text
+
+
+def _format_json_value(value, *, color: bool) -> str:
+    if isinstance(value, str):
+        return _color(json.dumps(value, ensure_ascii=False), ANSI_GREEN, enabled=color)
+    if isinstance(value, bool):
+        return _color(str(value).lower(), ANSI_MAGENTA, enabled=color)
+    if value is None:
+        return _color("null", ANSI_DIM, enabled=color)
+    if isinstance(value, (int, float)):
+        return _color(str(value), ANSI_YELLOW, enabled=color)
+    return _color(json.dumps(value, ensure_ascii=False, sort_keys=True), ANSI_BLUE, enabled=color)
+
+
+def format_ollama_response(raw_response: str, *, color: bool | None = None) -> str:
+    """Pretty-print a model JSON response one attribute per line when possible."""
+    if color is None:
+        color = sys.stdout.isatty()
+    if not raw_response.strip():
+        return ""
+    try:
+        parsed = json.loads(raw_response)
+    except json.JSONDecodeError:
+        return _color(raw_response, ANSI_RED, enabled=color)
+    if not isinstance(parsed, dict):
+        return _color(json.dumps(parsed, ensure_ascii=False, indent=2, sort_keys=True), ANSI_BLUE, enabled=color)
+
+    lines = []
+    for key in sorted(parsed):
+        formatted_key = _color(str(key), ANSI_CYAN + ANSI_BOLD, enabled=color)
+        lines.append(f"    {formatted_key}: {_format_json_value(parsed[key], color=color)}")
+    return "\n".join(lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,8 +122,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[{index}/{len(images)}] {image.name} -> {dest.relative_to(destination)} ({classification.category}, {date_source})")
         if classification.preferred_category:
             print(f"  preferred category: {classification.preferred_category}")
+        formatted_response = format_ollama_response(classification.raw_response)
+        if formatted_response:
+            print("  ollama response:")
+            print(formatted_response)
         for warning in warnings:
-            print(f"  warning: {warning}")
+            label = "info" if warning.startswith("Normalized image for Ollama:") else "warning"
+            print(f"  {label}: {warning}")
 
         operation_error = ""
         if not args.dry_run:

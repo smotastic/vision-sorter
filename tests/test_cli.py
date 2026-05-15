@@ -5,7 +5,19 @@ import json
 import pytest
 
 from vision_sort.classifier import ClassificationResult
-from vision_sort.cli import build_parser, main
+from vision_sort.cli import build_parser, format_ollama_response, main
+
+
+def test_format_ollama_response_sorts_json_keys_on_separate_lines():
+    assert format_ollama_response('{"b":2,"a":1}', color=False) == '    a: 1\n    b: 2'
+
+
+def test_format_ollama_response_can_color_json_attributes():
+    assert format_ollama_response('{"category":"Birds"}', color=True) == '    \033[36m\033[1mcategory\033[0m: \033[32m"Birds"\033[0m'
+
+
+def test_format_ollama_response_preserves_non_json_text():
+    assert format_ollama_response("not json", color=False) == "not json"
 
 
 def test_parser_accepts_expected_arguments():
@@ -77,6 +89,11 @@ def test_main_writes_audit_log_with_raw_ollama_response(tmp_path, monkeypatch, c
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "preferred category: Songbird" in output
+    assert "ollama response:" in output
+    assert '    category: "Birds"' in output
+    assert "    confidence: 0.8" in output
+    assert '    description: "bird"' in output
+    assert '    preferred_category: "Songbird"' in output
     entries = [json.loads(line) for line in (tmp_path / "vision-sort-audit.jsonl").read_text(encoding="utf-8").splitlines()]
     assert entries[0]["preferred_category"] == "Songbird"
     assert entries[0]["ollama_response"] == raw_response
