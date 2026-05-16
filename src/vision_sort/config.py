@@ -65,7 +65,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "keep_alive": "30m",
         "options": {
             "temperature": 0,
-            "num_predict": 80,
+            "num_predict": 200,
         },
         "image_max_size": 768,
         "jpeg_quality": 70,

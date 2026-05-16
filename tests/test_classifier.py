@@ -56,6 +56,22 @@ def test_invalid_json_routes_to_fallback():
     assert result.warnings
 
 
+def test_truncated_json_recovers_classification_fields():
+    config = load_config()
+
+    result = parse_classification_response(
+        '{"category":"Birds","preferred_category":"Songbird","confidence":0.82,"description":"small bird perched on',
+        config,
+        "qwen3.6",
+    )
+
+    assert result.category == "Birds"
+    assert result.confidence == 0.82
+    assert result.preferred_category == "Songbird"
+    assert result.description == "small bird perched on"
+    assert any("Recovered classification fields" in warning for warning in result.warnings)
+
+
 def test_unknown_category_routes_to_fallback():
     config = load_config()
 
@@ -121,7 +137,7 @@ def test_classify_image_calls_ollama(monkeypatch, tmp_path):
     assert calls[0][0] == "http://localhost:11434/api/generate"
     assert calls[0][1]["images"] == ["bm9ybWFsaXplZA=="]
     assert calls[0][1]["keep_alive"] == "30m"
-    assert calls[0][1]["options"] == {"temperature": 0, "num_predict": 80}
+    assert calls[0][1]["options"] == {"temperature": 0, "num_predict": 200}
     assert normalize_calls == [(path, 768, 70)]
     assert calls[0][2] == 600
     assert not normalized.exists()

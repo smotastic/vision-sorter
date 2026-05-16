@@ -4,9 +4,14 @@ import argparse
 import json
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import load_config
+
+
+def utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def write_audit_entry(path: Path, entry: dict) -> None:
@@ -194,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if config["audit"]["enabled"]:
             write_audit_entry(Path(config["audit"]["path"]), {
+                "timestamp": utc_timestamp(),
                 "source": str(image),
                 "destination": str(dest),
                 "category_symlink": str(symlink_path) if symlink_path is not None else "",

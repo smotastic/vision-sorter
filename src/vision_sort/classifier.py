@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,28 +32,87 @@ def build_prompt(categories: list[str], fallback_category: str) -> str:
         f"{category_lines}\n\n"
         f"If the image is ambiguous or does not fit, choose {fallback_category}.\n"
         "Also include preferred_category: the category name you would have chosen if you were not restricted to the allowed list.\n"
+        "Keep preferred_category to 1-3 words and description to 12 words or fewer.\n"
         "Return only strict JSON with this schema:\n"
         '{"category":"<one allowed category>","preferred_category":"<free-form best category>","confidence":0.0,"description":"short visual description"}\n'
         "Confidence must be a number from 0 to 1. Do not include markdown or extra text."
     )
 
 
-def _extract_json_object(text: str) -> dict[str, Any]:
+def _json_string_value(text: str, key: str) -> str | None:
+    match = re.search(rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"', text, re.DOTALL)
+    if not match:
+        return None
+    try:
+        return json.loads(f'"{match.group(1)}"')
+    except json.JSONDecodeError:
+        return match.group(1)
+
+
+def _truncated_json_string_value(text: str, key: str) -> str | None:
+    marker = f'"{key}"'
+    start = text.find(marker)
+    if start == -1:
+        return None
+    colon = text.find(":", start + len(marker))
+    if colon == -1:
+        return None
+    quote = text.find('"', colon + 1)
+    if quote == -1:
+        return None
+    value = text[quote + 1 :]
+    return value.rstrip(' ,')
+
+
+def _recover_truncated_json_object(text: str) -> dict[str, Any] | None:
+    """Recover useful fields from an Ollama response cut off mid-JSON.
+
+    Ollama may stop at num_predict before emitting the closing quote/brace. The
+    category and confidence usually appear before the truncated description, so
+    salvaging them avoids unnecessary Unclear-Needs-Review results.
+    """
+    category = _json_string_value(text, "category")
+    confidence_match = re.search(r'"confidence"\s*:\s*(-?\d+(?:\.\d+)?)', text)
+    if category is None or confidence_match is None:
+        return None
+
+    recovered: dict[str, Any] = {
+        "category": category,
+        "confidence": float(confidence_match.group(1)),
+    }
+    preferred_category = _json_string_value(text, "preferred_category")
+    if preferred_category is not None:
+        recovered["preferred_category"] = preferred_category
+    description = _json_string_value(text, "description")
+    if description is None:
+        description = _truncated_json_string_value(text, "description")
+    if description is not None:
+        recovered["description"] = description
+    return recovered
+
+
+def _extract_json_object(text: str) -> tuple[dict[str, Any], bool]:
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict):
-            return parsed
+            return parsed, False
     except json.JSONDecodeError:
         pass
 
     start = text.find("{")
     end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+    if start == -1:
         raise ValueError("Model response did not contain a JSON object")
-    parsed = json.loads(text[start : end + 1])
-    if not isinstance(parsed, dict):
-        raise ValueError("Model JSON response must be an object")
-    return parsed
+    if end > start:
+        parsed = json.loads(text[start : end + 1])
+        if not isinstance(parsed, dict):
+            raise ValueError("Model JSON response must be an object")
+        return parsed, False
+
+    recovered = _recover_truncated_json_object(text[start:])
+    if recovered is not None:
+        return recovered, True
+    raise ValueError("Model response did not contain a complete JSON object")
 
 
 def parse_classification_response(response_text: str, config: dict, model: str, warnings: list[str] | None = None) -> ClassificationResult:
@@ -63,10 +123,12 @@ def parse_classification_response(response_text: str, config: dict, model: str, 
     min_confidence = classification["min_confidence"]
 
     try:
-        parsed = _extract_json_object(response_text)
+        parsed, recovered_truncated = _extract_json_object(response_text)
     except Exception as exc:
         warnings.append(f"Invalid model JSON response: {exc}")
         return ClassificationResult(fallback, None, "", model, warnings, raw_response=response_text)
+    if recovered_truncated:
+        warnings.append("Recovered classification fields from truncated model JSON response")
 
     category = parsed.get("category")
     preferred_category = parsed.get("preferred_category") or ""

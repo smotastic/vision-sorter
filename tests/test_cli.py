@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 import pytest
 
@@ -97,6 +98,8 @@ def test_main_writes_audit_log_with_raw_ollama_response(tmp_path, monkeypatch, c
     entries = [json.loads(line) for line in (tmp_path / "vision-sort-audit.jsonl").read_text(encoding="utf-8").splitlines()]
     assert entries[0]["preferred_category"] == "Songbird"
     assert entries[0]["ollama_response"] == raw_response
+    assert entries[0]["timestamp"].endswith("Z")
+    datetime.fromisoformat(entries[0]["timestamp"].replace("Z", "+00:00"))
     assert "/by-date/" in entries[0]["destination"]
     assert "/by-category/Birds/" in entries[0]["category_symlink"]
     assert not (destination / "index" / "manifest.jsonl").exists()
