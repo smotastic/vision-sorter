@@ -1,5 +1,7 @@
 # Vision Sort
 
+![Vision Sort logo](logo.png)
+
 Vision Sort classifies photos with an Ollama-compatible vision model and sorts them into a date-first photo library.
 
 It copies files by default, can move files when requested, writes a durable JSONL manifest for stored images, writes a separate JSONL audit log, and records the model's unrestricted `preferred_category` so the taxonomy can improve over time.
