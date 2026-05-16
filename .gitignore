@@ -43,6 +43,8 @@ vision-sort-audit.jsonl
 *.jsonl.tmp
 sorted/
 incoming/
+source/
+destination/
 
 # Temporary/generated images
 vision-sort-ollama-*.jpg
@@ -74,3 +76,4 @@ node_modules/
 .tmp/
 tmp/
 temp/
+
