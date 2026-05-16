@@ -35,6 +35,11 @@ DEFAULT_CATEGORIES = [
     "Other-Nature",
     "Squirrels",
     "Swans",
+    "Cats",
+    "Sparrows",
+    "Blackbirds",
+    "Blue-Tits",
+    "Insect-Hotels",
     "Unclear-Needs-Review",
 ]
 
