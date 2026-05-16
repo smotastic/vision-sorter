@@ -79,7 +79,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "dates": {
         "prefer_exif": True,
         "fallback_to_mtime": True,
-        "folder_date_format": "%Y_%m_%d",
+        "folder_date_format": "%Y-%m-%d",
+    },
+    "layout": {
+        "date_root": "by-date",
+        "category_index_root": "by-category",
+        "index_root": "index",
+        "create_category_symlinks": True,
+        "manifest_path": "index/manifest.jsonl",
     },
     "audit": {
         "enabled": True,
@@ -113,7 +120,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 
 
 def validate_config(config: dict[str, Any]) -> None:
-    required_sections = ["ollama", "classification", "files", "dates", "audit"]
+    required_sections = ["ollama", "classification", "files", "dates", "layout", "audit"]
     for section in required_sections:
         if not isinstance(config.get(section), dict):
             raise ValueError(f"Missing or invalid config section: {section}")
@@ -171,6 +178,19 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("dates.fallback_to_mtime must be a boolean")
     if not isinstance(dates.get("folder_date_format"), str) or not dates["folder_date_format"]:
         raise ValueError("dates.folder_date_format must be a non-empty string")
+
+    layout = config["layout"]
+    for key in ["date_root", "category_index_root", "index_root", "manifest_path"]:
+        value = layout.get(key)
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"layout.{key} must be a non-empty string")
+        path = Path(value)
+        if path.is_absolute():
+            raise ValueError(f"layout.{key} must be a relative path")
+        if ".." in path.parts:
+            raise ValueError(f"layout.{key} must not contain '..' path segments")
+    if not isinstance(layout.get("create_category_symlinks"), bool):
+        raise ValueError("layout.create_category_symlinks must be a boolean")
 
     audit = config["audit"]
     if not isinstance(audit.get("enabled"), bool):

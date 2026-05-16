@@ -1,8 +1,8 @@
 # Vision Sort
 
-Vision Sort classifies photos with an Ollama-compatible vision model and sorts them into dated category folders.
+Vision Sort classifies photos with an Ollama-compatible vision model and sorts them into a date-first photo library.
 
-It copies files by default, can move files when requested, writes a JSONL audit log, and records the model's unrestricted `preferred_category` so the taxonomy can improve over time.
+It copies files by default, can move files when requested, writes a durable JSONL manifest for stored images, writes a separate JSONL audit log, and records the model's unrestricted `preferred_category` so the taxonomy can improve over time.
 
 ## Requirements
 
@@ -52,17 +52,25 @@ Use a custom config:
 
 ## Output layout
 
-Files are placed under folders named with the image date and category:
+Files are stored canonically under `by-date/`, with a generated category-first symlink index under `by-category/`:
 
 ```text
 sorted/
-  2025_04_05-Birds/
-    DSC_2508.NEF
-  2025_06_07-Squirrels/
-    DSC_4510.jpeg
+  by-date/
+    2025/
+      2025-04-05/
+        Birds/
+          DSC_2508.NEF
+  by-category/
+    Birds/
+      2025/
+        2025-04-05/
+          DSC_2508.NEF -> ../../../../by-date/2025/2025-04-05/Birds/DSC_2508.NEF
+  index/
+    manifest.jsonl
 ```
 
-Dates prefer EXIF metadata and fall back to file modification time by default.
+Dates prefer EXIF metadata and fall back to file modification time by default. The default folder date format is ISO-style `YYYY-MM-DD`.
 
 ## Configuration
 
@@ -73,8 +81,33 @@ Important sections:
 - `ollama`: host, model, timeout, generation options, image normalization settings
 - `classification`: fallback category, minimum confidence, allowed categories
 - `files`: copy/move behavior, recursion, supported extensions, duplicate strategy
-- `dates`: EXIF and folder date behavior
+- `dates`: EXIF and folder date behavior; defaults to `%Y-%m-%d` for ISO date folders
+- `layout`: generated root names, category symlink behavior, and manifest path
 - `audit`: enables the audit log and sets its path
+
+## Manifest vs audit log
+
+`sorted/index/manifest.jsonl` is the durable catalog of successfully stored library images. It records canonical `by-date` paths, category symlink paths, date/category metadata, model metadata, and the copy/move action. It is suitable for future import into SQLite or search tooling, but Vision Sort does not create a database today.
+
+`vision-sort-audit.jsonl` is a run/debug log. It may include dry-runs, failed operations, warnings, and raw Ollama responses. Use it to inspect classifier behavior and improve categories, not as the canonical library catalog.
+
+## One-time migration from the old layout
+
+If you already have old folders such as `sorted/2025_04_05-Birds/`, use the migration script to copy them into the new layout. The migration is copy-only and never deletes old folders.
+
+Preview first:
+
+```bash
+python3 scripts/migrate_sorted_layout.py sorted --audit vision-sort-audit.jsonl --dry-run
+```
+
+Apply only after the dry-run looks correct:
+
+```bash
+python3 scripts/migrate_sorted_layout.py sorted --audit vision-sort-audit.jsonl --apply
+```
+
+The script enriches manifest entries from matching audit log records when possible.
 
 ## Audit log and category improvement
 

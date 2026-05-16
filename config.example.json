@@ -68,7 +68,14 @@
   "dates": {
     "prefer_exif": true,
     "fallback_to_mtime": true,
-    "folder_date_format": "%Y_%m_%d"
+    "folder_date_format": "%Y-%m-%d"
+  },
+  "layout": {
+    "date_root": "by-date",
+    "category_index_root": "by-category",
+    "index_root": "index",
+    "create_category_symlinks": true,
+    "manifest_path": "index/manifest.jsonl"
   },
   "audit": {
     "enabled": true,

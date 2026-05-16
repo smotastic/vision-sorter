@@ -86,7 +86,13 @@ def main(argv: list[str] | None = None) -> int:
 
     from .classifier import classify_image
     from .dates import get_image_date
-    from .files import build_destination_path, discover_images
+    from .files import (
+        build_by_date_destination_path,
+        build_category_symlink_path,
+        create_relative_symlink,
+        discover_images,
+    )
+    from .manifest import build_manifest_entry, write_manifest_entry
 
     config = load_config(args.config)
     model = args.model or config["ollama"]["model"]
@@ -118,8 +124,29 @@ def main(argv: list[str] | None = None) -> int:
         image_date, date_source, warnings = get_image_date(image, config)
         classification = classify_image(image, config, model_override=args.model)
         warnings.extend(classification.warnings)
-        dest = build_destination_path(destination, image_date.strftime(date_format), classification.category, image)
-        print(f"[{index}/{len(images)}] {image.name} -> {dest.relative_to(destination)} ({classification.category}, {date_source})")
+        date_label = image_date.strftime(date_format)
+        dest = build_by_date_destination_path(
+            destination,
+            date_label,
+            classification.category,
+            image,
+            date_root=config["layout"]["date_root"],
+        )
+        symlink_path = None
+        symlink_relative_path = None
+        if config["layout"]["create_category_symlinks"]:
+            symlink_path = build_category_symlink_path(
+                destination,
+                dest,
+                date_label,
+                classification.category,
+                category_index_root=config["layout"]["category_index_root"],
+            )
+            symlink_relative_path = symlink_path.relative_to(destination)
+        dest_relative_path = dest.relative_to(destination)
+        print(f"[{index}/{len(images)}] {image.name} -> {dest_relative_path} ({classification.category}, {date_source})")
+        if symlink_relative_path is not None:
+            print(f"  category symlink: {symlink_relative_path}")
         if classification.preferred_category:
             print(f"  preferred category: {classification.preferred_category}")
         formatted_response = format_ollama_response(classification.raw_response)
@@ -131,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {label}: {warning}")
 
         operation_error = ""
+        symlink_created = False
         if not args.dry_run:
             try:
                 dest.parent.mkdir(parents=True, exist_ok=True)
@@ -138,6 +166,26 @@ def main(argv: list[str] | None = None) -> int:
                     shutil.move(str(image), str(dest))
                 else:
                     shutil.copy2(image, dest)
+                if symlink_path is not None:
+                    try:
+                        create_relative_symlink(symlink_path, dest)
+                        symlink_created = True
+                    except Exception as exc:
+                        warnings.append(f"Could not create category symlink: {exc}")
+                        print(f"  warning: Could not create category symlink: {exc}")
+                write_manifest_entry(
+                    destination / config["layout"]["manifest_path"],
+                    build_manifest_entry(
+                        source=image,
+                        canonical_relative_path=dest_relative_path,
+                        symlink_relative_path=symlink_relative_path if symlink_created else None,
+                        image_date=image_date,
+                        date_label=date_label,
+                        date_source=date_source,
+                        classification=classification,
+                        action=action,
+                    ),
+                )
                 completed += 1
             except Exception as exc:
                 failed += 1
@@ -148,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
             write_audit_entry(Path(config["audit"]["path"]), {
                 "source": str(image),
                 "destination": str(dest),
+                "category_symlink": str(symlink_path) if symlink_path is not None else "",
                 "action": action,
                 "dry_run": args.dry_run,
                 "date": image_date.isoformat(),
@@ -159,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
                 "model": classification.model,
                 "warnings": warnings,
                 "ollama_response": classification.raw_response,
-                "operation_status": "dry-run" if args.dry_run else ("failed" if operation_error else "completed"),
+                "operation_status": "dry-run" if args.dry_run else ("failed" if operation_error else ("completed-with-warning" if any(warning.startswith("Could not create category symlink:") for warning in warnings) else "completed")),
                 "operation_error": operation_error,
             })
 

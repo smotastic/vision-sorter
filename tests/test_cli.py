@@ -97,6 +97,10 @@ def test_main_writes_audit_log_with_raw_ollama_response(tmp_path, monkeypatch, c
     entries = [json.loads(line) for line in (tmp_path / "vision-sort-audit.jsonl").read_text(encoding="utf-8").splitlines()]
     assert entries[0]["preferred_category"] == "Songbird"
     assert entries[0]["ollama_response"] == raw_response
+    assert "/by-date/" in entries[0]["destination"]
+    assert "/by-category/Birds/" in entries[0]["category_symlink"]
+    assert not (destination / "index" / "manifest.jsonl").exists()
+    assert list(destination.rglob("photo.jpg")) == []
 
 
 def test_main_copies_classified_images_when_not_dry_run(tmp_path, monkeypatch, capsys):
@@ -125,10 +129,19 @@ def test_main_copies_classified_images_when_not_dry_run(tmp_path, monkeypatch, c
 
     output = capsys.readouterr().out
     assert exit_code == 0
-    copied_files = list(destination.glob("*-Birds/photo.jpg"))
+    copied_files = list(destination.glob("by-date/*/*/Birds/photo.jpg"))
     assert len(copied_files) == 1
     assert copied_files[0].read_bytes() == b"fake"
+    link_files = list(destination.glob("by-category/Birds/*/*/photo.jpg"))
+    assert len(link_files) == 1
+    assert link_files[0].is_symlink()
+    assert link_files[0].resolve() == copied_files[0]
+    manifest = destination / "index" / "manifest.jsonl"
+    manifest_entries = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
+    assert manifest_entries[0]["destination_path"].startswith("by-date/")
+    assert manifest_entries[0]["category_symlink_path"].startswith("by-category/Birds/")
     assert image.exists()
+    assert "category symlink: by-category/Birds/" in output
     assert "Done. Processed: 1, copied: 1, failed: 0" in output
 
 
