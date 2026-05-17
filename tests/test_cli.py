@@ -33,6 +33,7 @@ def test_parser_accepts_expected_arguments():
         "llava",
         "--move",
         "--dry-run",
+        "--no-skip-processed",
     ])
 
     assert args.source == "incoming"
@@ -41,6 +42,7 @@ def test_parser_accepts_expected_arguments():
     assert args.model == "llava"
     assert args.move is True
     assert args.dry_run is True
+    assert args.no_skip_processed is True
 
 
 def test_main_prints_copy_summary_by_default(tmp_path, monkeypatch, capsys):
@@ -60,6 +62,7 @@ def test_main_prints_copy_summary_by_default(tmp_path, monkeypatch, capsys):
     assert "Action:      copy" in output
     assert "Model:       llama3.2-vision" in output
     assert "Dry run:     yes" in output
+    assert "Skip done:   yes" in output
 
 
 def test_main_writes_audit_log_with_raw_ollama_response(tmp_path, monkeypatch, capsys):
@@ -145,7 +148,78 @@ def test_main_copies_classified_images_when_not_dry_run(tmp_path, monkeypatch, c
     assert manifest_entries[0]["category_symlink_path"].startswith("by-category/Birds/")
     assert image.exists()
     assert "category symlink: by-category/Birds/" in output
-    assert "Done. Processed: 1, copied: 1, failed: 0" in output
+    assert "Done. Found: 1, processed: 1, skipped: 0, copied: 1, failed: 0" in output
+
+
+def test_main_reprocesses_manifest_entries_when_destination_file_is_missing(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "incoming"
+    destination = tmp_path / "sorted"
+    source.mkdir()
+    (destination / "index").mkdir(parents=True)
+    image = source / "photo.jpg"
+    image.write_bytes(b"fake")
+    (destination / "index" / "manifest.jsonl").write_text(
+        json.dumps({"source_path": str(image), "destination_path": "by-date/old/photo.jpg"}) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "vision_sort.classifier.classify_image",
+        lambda path, config, model_override=None: ClassificationResult(
+            "Birds",
+            0.9,
+            "bird",
+            "llama3.2-vision",
+            [],
+            "Bird",
+            '{"category":"Birds"}',
+        ),
+    )
+
+    exit_code = main([str(source), str(destination)])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Repaired manifest: removed 1 stale entry." in output
+    assert "photo.jpg -> skipped" not in output
+    assert "Done. Found: 1, processed: 1, skipped: 0, copied: 1, failed: 0" in output
+    manifest_entries = [
+        json.loads(line)
+        for line in (destination / "index" / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(manifest_entries) == 1
+    assert manifest_entries[0]["source_path"] == str(image)
+    assert manifest_entries[0]["destination_path"].startswith("by-date/")
+
+
+def test_main_skips_images_already_recorded_in_manifest(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "incoming"
+    destination = tmp_path / "sorted"
+    source.mkdir()
+    (destination / "index").mkdir(parents=True)
+    image = source / "photo.jpg"
+    image.write_bytes(b"fake")
+    existing_destination = destination / "by-date" / "old" / "photo.jpg"
+    existing_destination.parent.mkdir(parents=True)
+    existing_destination.write_bytes(b"fake")
+    (destination / "index" / "manifest.jsonl").write_text(
+        json.dumps({"source_path": str(image), "destination_path": "by-date/old/photo.jpg"}) + "\n",
+        encoding="utf-8",
+    )
+
+    def fail_if_called(path, config, model_override=None):
+        raise AssertionError("already processed image should not be classified")
+
+    monkeypatch.setattr("vision_sort.classifier.classify_image", fail_if_called)
+
+    exit_code = main([str(source), str(destination)])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "photo.jpg -> skipped (already in manifest)" in output
+    assert "Done. Found: 1, processed: 0, skipped: 1, copied: 0, failed: 0" in output
 
 
 def test_main_prints_destructive_move_summary(tmp_path, monkeypatch, capsys):

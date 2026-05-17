@@ -46,6 +46,12 @@ Override the model:
 ./vision-sort incoming sorted --model llama3.2-vision
 ```
 
+Vision Sort skips source files already recorded in `sorted/index/manifest.jsonl` by default. The manifest is self-repairing: if a recorded canonical destination file is missing, Vision Sort removes that stale manifest entry and processes the source again. Reprocess everything with:
+
+```bash
+./vision-sort incoming sorted --no-skip-processed
+```
+
 Use a custom config:
 
 ```bash
@@ -89,7 +95,7 @@ Important sections:
 
 ## Manifest vs audit log
 
-`sorted/index/manifest.jsonl` is the durable catalog of successfully stored library images. It records canonical `by-date` paths, category symlink paths, date/category metadata, model metadata, and the copy/move action. It is suitable for future import into SQLite or search tooling, but Vision Sort does not create a database today.
+`sorted/index/manifest.jsonl` is the durable catalog of successfully stored library images. It records canonical `by-date` paths, category symlink paths, date/category metadata, model metadata, and the copy/move action. Vision Sort uses this index to skip source files it has already processed on later runs, and repairs it by removing entries whose canonical destination files no longer exist. It is suitable for future import into SQLite or search tooling, but Vision Sort does not create a database today.
 
 `vision-sort-audit.jsonl` is a run/debug log. It may include dry-runs, failed operations, warnings, and raw Ollama responses. Use it to inspect classifier behavior and improve categories, not as the canonical library catalog.
 

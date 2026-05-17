@@ -78,6 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", help="Override the Ollama model from config")
     parser.add_argument("--move", action="store_true", help="Move files instead of copying (destructive)")
     parser.add_argument("--dry-run", action="store_true", help="Classify and print destinations without copying or moving")
+    parser.add_argument(
+        "--no-skip-processed",
+        action="store_true",
+        help="Process images even when their source paths are already present in the destination manifest",
+    )
     return parser
 
 
@@ -97,7 +102,13 @@ def main(argv: list[str] | None = None) -> int:
         create_relative_symlink,
         discover_images,
     )
-    from .manifest import build_manifest_entry, write_manifest_entry
+    from .manifest import (
+        build_manifest_entry,
+        is_source_processed,
+        load_processed_source_paths,
+        repair_manifest,
+        write_manifest_entry,
+    )
 
     config = load_config(args.config)
     model = args.model or config["ollama"]["model"]
@@ -110,11 +121,25 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Model:       {model}")
     print(f"Config:      {args.config or './config.json'}")
     print(f"Dry run:     {'yes' if args.dry_run else 'no'}")
+    print(f"Skip done:   {'no' if args.no_skip_processed else 'yes'}")
     print()
     print("Scanning recursively..." if config["files"]["recursive"] else "Scanning...")
 
     source = Path(args.source)
     destination = Path(args.destination)
+    manifest_path = destination / config["layout"]["manifest_path"]
+    repaired_entries = (
+        0
+        if args.no_skip_processed or args.dry_run
+        else repair_manifest(manifest_path, destination_root=destination)
+    )
+    processed_source_paths = (
+        set()
+        if args.no_skip_processed
+        else load_processed_source_paths(manifest_path, destination_root=destination)
+    )
+    if repaired_entries:
+        print(f"Repaired manifest: removed {repaired_entries} stale entr{'y' if repaired_entries == 1 else 'ies'}.")
     images = discover_images(
         source,
         set(config["files"]["supported_extensions"]),
@@ -125,7 +150,13 @@ def main(argv: list[str] | None = None) -> int:
     date_format = config["dates"]["folder_date_format"]
     completed = 0
     failed = 0
+    skipped = 0
     for index, image in enumerate(images, start=1):
+        if not args.no_skip_processed and is_source_processed(image, processed_source_paths):
+            skipped += 1
+            print(f"[{index}/{len(images)}] {image.name} -> skipped (already in manifest)")
+            continue
+
         image_date, date_source, warnings = get_image_date(image, config)
         classification = classify_image(image, config, model_override=args.model)
         warnings.extend(classification.warnings)
@@ -179,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
                         warnings.append(f"Could not create category symlink: {exc}")
                         print(f"  warning: Could not create category symlink: {exc}")
                 write_manifest_entry(
-                    destination / config["layout"]["manifest_path"],
+                    manifest_path,
                     build_manifest_entry(
                         source=image,
                         canonical_relative_path=dest_relative_path,
@@ -192,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                 )
                 completed += 1
+                processed_source_paths.update({str(image), str(image.resolve())})
             except Exception as exc:
                 failed += 1
                 operation_error = str(exc)
@@ -220,5 +252,5 @@ def main(argv: list[str] | None = None) -> int:
 
     action_past = "moved" if action == "move" else "copied"
     print()
-    print(f"Done. Processed: {len(images)}, {action_past}: {completed}, failed: {failed}")
+    print(f"Done. Found: {len(images)}, processed: {len(images) - skipped}, skipped: {skipped}, {action_past}: {completed}, failed: {failed}")
     return 0
